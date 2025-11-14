@@ -16,28 +16,28 @@ setup:
 
 build:
 	@echo "Building Docker images..."
-	@docker-compose -f $(COMPOSE_FILE) build
+	@docker compose -f $(COMPOSE_FILE) build
 	@echo "Build complete!"
 
 up:
 	@echo "Starting containers..."
-	@docker-compose -f $(COMPOSE_FILE) up -d
+	@docker compose -f $(COMPOSE_FILE) up -d
 	@echo "Containers started successfully!"
 	@echo "Access your site at: https://elbaraka.42.fr"
 
 down:
 	@echo "Stopping containers..."
-	@docker-compose -f $(COMPOSE_FILE) down
+	@docker compose -f $(COMPOSE_FILE) down
 	@echo "Containers stopped!"
 
 stop:
 	@echo "Stopping containers..."
-	@docker-compose -f $(COMPOSE_FILE) stop
+	@docker compose -f $(COMPOSE_FILE) stop
 	@echo "Containers stopped!"
 
 start:
 	@echo "Starting containers..."
-	@docker-compose -f $(COMPOSE_FILE) start
+	@docker compose -f $(COMPOSE_FILE) start
 	@echo "Containers started!"
 
 clean: down
@@ -53,9 +53,9 @@ fclean: clean
 re: fclean all
 
 logs:
-	@docker-compose -f $(COMPOSE_FILE) logs -f
+	@docker compose -f $(COMPOSE_FILE) logs -f
 
 ps:
-	@docker-compose -f $(COMPOSE_FILE) ps
+	@docker compose -f $(COMPOSE_FILE) ps
 
 .PHONY: all setup build up down stop start clean fclean re logs ps
