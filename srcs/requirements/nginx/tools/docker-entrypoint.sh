@@ -8,7 +8,9 @@ if [ ! -f /etc/nginx/ssl/nginx.crt ]; then
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/nginx/ssl/nginx.key \
         -out /etc/nginx/ssl/nginx.crt \
-        -subj "/C=MA/ST=Morocco/L=Khouribga/O=42/OU=42/CN=elbaraka.42.fr"
+        -subj "/C=MA/ST=Morocco/L=Ben Guerir/O=42/OU=42/CN=elbaraka.42.fr"
+        sudo cp /etc/nginx/ssl/nginx.crt /usr/local/share/ca-certificates/
+        sudo update-ca-certificates
     echo "SSL certificate generated!"
 fi
 

@@ -1,7 +1,7 @@
 services:
   mariadb:
-    container_name: mariadb
     image: mariadb:inception
+    container_name: mariadb
     build:
       context: ./requirements/mariadb
       dockerfile: Dockerfile

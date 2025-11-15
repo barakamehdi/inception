@@ -1,14 +1,1 @@
-# Environment variables
-srcs/.env
-
-# Data directories
-/home/
-
-# Docker
-.dockerignore
-
-# System files
-.DS_Store
-*.swp
-*.swo
-*~
+.env
