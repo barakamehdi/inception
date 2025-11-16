@@ -4,7 +4,6 @@ set -e
 # Wait for MariaDB to be ready
 echo "Waiting for MariaDB to be ready..."
 until mysqladmin ping -h"mariadb" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" --silent; do
-    echo "MariaDB is unavailable - sleeping"
     sleep 2
 done
 echo "MariaDB is up!"
