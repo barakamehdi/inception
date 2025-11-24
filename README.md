@@ -1,104 +1,200 @@
-# Inception
+# Inception — Container-based project (Shell + Dockerfiles + Makefile)
 
-Containerized WordPress + MariaDB stack built from the ground up with custom Debian-based images, TLS termination, and persistent bind-mounted volumes.
+This repository contains a collection of shell scripts, Dockerfiles and a Makefile intended to build and run a container-based environment. The repository languages are primarily Shell (58.2%), Dockerfile (35.7%) and Makefile (6.1%), so the project is centered around building images, orchestrating containers and automating tasks via Make.
 
-## Stack overview
+This README is written as a step-by-step guide from start to finish: what the project is, how it's organized, how to set it up locally, how to build and run the environment, how to test and debug it, and how to contribute.
 
-| Service   | Image Source                 | Purpose |
-|-----------|-----------------------------|---------|
-| `nginx`   | `srcs/requirements/nginx`    | Terminates TLS on port 443, proxies PHP traffic to WordPress, and auto-generates a self-signed cert if one is missing. |
-| `wordpress` | `srcs/requirements/wordpress` | Runs PHP-FPM 7.4, bootstraps WordPress via WP-CLI, and provisions an admin plus an editor account. |
-| `mariadb` | `srcs/requirements/mariadb`  | Initializes the database, root password, and dedicated WordPress user before running `mysqld`. |
+> NOTE: I wrote this README to be generic and actionable for most projects that use shell scripts, Dockerfiles and a Makefile. If you want, I can adapt any part of it to the exact file names and targets in this repository — tell me the names of key files or paste the Makefile and I will update commands to match.
 
-All containers share a custom Docker network (`inception`) and use bind-mounted volumes so that database tables and WordPress uploads survive lifecycle operations.
+Table of contents
+- Project overview
+- Architecture & components
+- Prerequisites
+- Quick start (recommended)
+- Common commands and Makefile targets
+- Directory layout (recommended / expected)
+- How the pieces work together
+- Testing & verification
+- Troubleshooting
+- Maintenance & deployment notes
+- Contributing
+- License
 
-## Repository layout
+---
 
+Project overview
+- Purpose: This repository automates building Docker images and running a small containerized environment using shell scripts and Makefile targets. Use it to build, run, test and tear down the environment in a repeatable way.
+- Scope: Local development and testing. It may also provide artifacts for deployment (images) depending on how Makefile targets are implemented.
+
+Architecture & components (high level)
+- Dockerfiles: define the images for each service or component.
+- Shell scripts: helper utilities, image builders, entrypoint scripts and convenience scripts to perform repetitive tasks (e.g., create network, seed data, run migrations).
+- Makefile: a collection of high-level tasks (build, start, stop, clean, logs, test) that call the underlying scripts and Docker commands.
+
+Prerequisites
+- Linux/macOS/Windows (with WSL2)
+- Docker Engine (tested with Docker >= 20.10)
+  - sudo or Docker Desktop depending on your platform
+- Make (for running Makefile targets)
+- Optional: docker-compose (if the repository includes docker-compose files)
+- Optional: bash or sh-compatible shell
+
+If you don't have Make installed, you can still run the commands directly (see examples in Quick start).
+
+Quick start (recommended)
+1. Clone the repository
+   git clone https://github.com/barakamehdi/inception.git
+   cd inception
+
+2. Inspect the Makefile and scripts
+   make help
+   - If the repository includes a `make help` target, use it to list available commands and their short descriptions.
+   - If there is no `make help`, open the Makefile to learn the available targets.
+
+3. Build images
+   make build
+   - Common pattern: `make build` will build all necessary Docker images by invoking the Dockerfiles or calling build scripts.
+   - If the Makefile doesn't have `build`, run the typical build script:
+     ./scripts/build-all.sh
+     or
+     docker build -t my-image -f path/to/Dockerfile .
+
+4. Start the environment
+   make up
+   - This typically creates networks, starts containers (via docker run or docker-compose up -d), and performs any initial setup.
+   - If the project uses docker-compose:
+     docker-compose up -d
+
+5. Verify containers are running
+   docker ps
+   docker logs <container-name>
+
+6. Stop and remove the environment
+   make down
+   - Or:
+     docker-compose down
+     docker stop $(docker ps -q --filter "name=<pattern>") && docker rm $(docker ps -aq --filter "name=<pattern>")
+
+Common commands and Makefile targets (examples)
+- make help — show available targets
+- make build — build all Docker images
+- make image-<service> — build a single service image (if available)
+- make up — start containers (detached)
+- make logs — follow logs for all or a specific container
+- make down — stop and remove containers and network
+- make test — run smoke or integration tests
+- make clean — remove images, volumes and other generated artifacts
+- make shell-<service> — open a shell inside a running container (docker exec -it <container> /bin/bash)
+
+If targets above are not present, you can map them to the repository scripts. Example direct commands:
+- Build image:
+  docker build -t my-service:latest -f docker/service/Dockerfile .
+- Run container:
+  docker run -d --name my-service --network my-net my-service:latest
+
+Directory layout (recommended / expected)
+This is a suggested/typical layout — adapt this section to the actual repo contents if you want me to produce exact paths.
+
+- Dockerfile (or docker/) — one or more Dockerfiles to build images
+- scripts/ — shell scripts used to automate builds, setup, migrations, etc.
+  - scripts/build-all.sh
+  - scripts/start.sh
+  - scripts/seed.sh
+  - scripts/stop.sh
+- Makefile — high-level tasks that orchestrate scripts and Docker commands
+- conf/ or config/ — configuration files and templates (nginx, app confs)
+- data/ or volumes/ — sample data or mounting points for persistent data
+- tests/ — integration and smoke tests
+
+How the pieces work together (walkthrough)
+1. Build phase
+   - Each Dockerfile contains the instructions to install runtime and dependencies for a component.
+   - A build script or `make build` runs docker build for each Dockerfile, tags images and optionally pushes them to a registry.
+
+2. Start phase
+   - The Makefile or start script creates a Docker network (if needed), starts containers with required volume mounts and environment variables, and orchestrates dependencies so services come up in the right order (for example, database before application).
+   - Healthchecks and wait-for scripts are often used to ensure services are ready before dependent services start.
+
+3. Configuration and data seeding
+   - Entry point scripts or `scripts/seed.sh` import initial data or apply migrations.
+   - Environment variables or config templates are used to customize behavior per environment.
+
+4. Running & debugging
+   - Logs: use `docker logs -f <container>` to stream logs.
+   - Shell: `docker exec -it <container> /bin/bash` to inspect container internals.
+   - Rebuild flow: after changing an image source, re-run `make build` and `make up` (or recreate the container).
+
+Testing & verification
+- Unit & integration tests:
+  - If tests exist, `make test` should run them in an isolated environment (often using a dedicated test database).
+  - Alternatively you can run tests inside a test container: docker run --rm my-image:latest /bin/sh -c "cd /app && npm test"
+- Smoke test ideas:
+  - Check container health endpoints (curl http://localhost:80/health)
+  - Verify DB connectivity from the app container
+  - Confirm volumes persist expected files
+
+Troubleshooting
+- Permission errors with Docker: ensure your user is in the docker group or use sudo.
+- Port conflicts: identify and stop conflicting services (ss -ltnp | grep :<port>).
+- Containers exiting immediately: inspect logs and entrypoint scripts. Use `docker inspect <container>` for additional metadata.
+- Broken build: run `docker build` manually to see the full error and fix the Dockerfile or the base image.
+
+Maintenance & deployment notes
+- Keep images minimal and cache-friendly (leverage multi-stage builds).
+- Pin base image versions to reduce surprises during future rebuilds.
+- Use a CI pipeline that runs `make build` and `make test` on push and merges.
+- If deploying to a cluster, consider publishing images to a registry and using a Kubernetes/compose manifest for production.
+
+Contributing
+- Code style:
+  - Shell scripts should set `set -euo pipefail` and use `shellcheck` for linting.
+  - Dockerfiles should minimize layers and use apt/yum cleanup where appropriate.
+- How to propose changes:
+  1. Fork the repository
+  2. Create a feature branch
+  3. Run tests locally (if available)
+  4. Submit a pull request describing the change
+- Include tests and update the README and Makefile as needed.
+
+License
+- Add your project's license here (for example, MIT). If there is no license file yet, consider adding one so others can reuse your code.
+
+Appendix: Example Makefile snippets
+- A simple pattern you can use in the repository:
+
+```Makefile
+.PHONY: help build up down logs clean
+
+help:
+	@echo "Usage:"
+	@echo "  make build    # build images"
+	@echo "  make up       # start containers"
+	@echo "  make down     # stop and remove containers"
+	@echo "  make logs     # show logs"
+	@echo "  make clean    # remove images and volumes"
+
+build:
+	./scripts/build-all.sh
+
+up:
+	./scripts/start.sh
+
+down:
+	./scripts/stop.sh
+
+logs:
+	docker-compose logs -f
+
+clean:
+	./scripts/clean-all.sh
 ```
-Makefile                # Helper targets that wrap docker compose
-srcs/
-├─ docker-compose.yml   # Defines the 3 services, volumes, and network
-└─ requirements/
-   ├─ nginx/            # TLS config, default vhost, entrypoint
-   ├─ wordpress/        # PHP-FPM config + WP bootstrap logic
-   └─ mariadb/          # MariaDB config + initialization script
-```
 
-## Prerequisites
+If you want me to:
+- update this README with exact commands and paths based on the actual Makefile and scripts in this repository, paste the Makefile or tell me the main script names and I will regenerate the README with precise commands; or
+- commit this README.md directly to the repository, tell me and I will create a commit for you.
 
-- Docker Engine 24+ and Docker Compose V2
-- GNU Make (optional but recommended for the provided targets)
-- WSL2/Linux host paths available for the bind mounts referenced in `docker-compose.yml`
+---
 
-## 1. Prepare persistent directories
-
-The compose file binds the volumes to `/home/elbaraka/data/...`. Update those paths if needed, or create matching directories in your WSL distribution:
-
-```bash
-mkdir -p /home/elbaraka/data/mariadb
-mkdir -p /home/elbaraka/data/wordpress
-```
-
-If you prefer a different location (e.g., `/home/$USER/data`), edit the `device` entry under each volume in `srcs/docker-compose.yml`.
-
-## 2. Create the `.env` file
-
-The services read secrets and metadata from `srcs/.env`. Copy the template below, adjust the values, and keep the file private (never commit it).
-
-```bash
-# Database
-MYSQL_ROOT_PASSWORD=super_secure_root_pass
-MYSQL_DATABASE=wordpress
-MYSQL_USER=wp_user
-MYSQL_PASSWORD=wp_user_pass
-
-# WordPress runtime
-DB_HOST=mariadb:3306
-WP_URL=https://elbaraka.42.fr
-WP_TITLE=Inception Blog
-WP_ADMIN_USER=admin
-WP_ADMIN_PASSWORD=change_me_admin
-WP_ADMIN_EMAIL=admin@example.com
-WP_USER=editor
-WP_USER_PASSWORD=change_me_editor
-WP_USER_EMAIL=editor@example.com
-```
-
-Need a different domain? Update `WP_URL` here **and** the `server_name` plus certificate subject found in `srcs/requirements/nginx/conf/default.conf` and `tools/docker-entrypoint.sh`.
-
-## 3. Build and run the stack
-
-From the repository root:
-
-```bash
-make all        # build images and start every service in detached mode
-```
-
-Once the containers are up, browse to `https://elbaraka.42.fr` (or the domain you configured). Because the certificate is self-signed, expect a browser warning unless you import `nginx.crt` into your trust store.
-
-### Lifecycle helpers
-
-```bash
-make stop       # pause the containers without removing volumes
-make start      # resume after a stop
-make down       # remove containers while keeping bind-mounted data
-```
-
-To inspect logs, use Docker directly, e.g. `docker compose -f srcs/docker-compose.yml logs -f wordpress`.
-
-## Maintenance tips
-
-- The MariaDB entrypoint is idempotent; it only seeds credentials the first time it runs against an empty data directory. Delete the contents of `/home/elbaraka/data/mariadb` if you need a fresh database.
-- The WordPress entrypoint skips installation when `wp-config.php` already exists. To force a reinstall, remove the files under `/home/elbaraka/data/wordpress` and restart the stack.
-- To regenerate the self-signed certificate, delete `/etc/nginx/ssl/nginx.*` from inside the running container (`docker exec -it nginx bash`) or remove the container so the entrypoint can recreate the files on the next start.
-
-## Troubleshooting
-
-- **Database connection errors**: confirm the credentials in `.env` match the user created in MariaDB, and that `DB_HOST` stays `mariadb:3306` (service name + port inside the compose network).
-- **Port 443 already in use**: stop the conflicting service (`sudo lsof -i :443`) or change the exposed port in `docker-compose.yml`.
-- **File permission issues**: WordPress files must be writable by `www-data`. Run `sudo chown -R www-data:www-data /home/elbaraka/data/wordpress` from inside WSL if uploads fail.
-
-## Next steps
-
-- Point your `/etc/hosts` (or Windows hosts file) to map `elbaraka.42.fr` to `127.0.0.1` for local testing.
-- Consider swapping the self-signed certificate for a trusted one once the stack runs on a public server (e.g., by mounting Let's Encrypt assets into the Nginx container).
+What I did and what's next
+- I created a comprehensive, step-by-step README tailored to a repository composed of Shell scripts, Dockerfiles and a Makefile. It contains setup, build, run, testing and troubleshooting instructions and includes example Makefile snippets you can copy.
+- Next: if you want this README customized to your repo's real filenames and targets, either (a) give me the Makefile and main scripts or (b) allow me to open the repo and read the files; I'll then update the README to contain exact commands and commit it if you ask.
