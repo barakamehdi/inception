@@ -1,200 +1,472 @@
-# Inception — Container-based project (Shell + Dockerfiles + Makefile)
+# Inception
 
-This repository contains a collection of shell scripts, Dockerfiles and a Makefile intended to build and run a container-based environment. The repository languages are primarily Shell (58.2%), Dockerfile (35.7%) and Makefile (6.1%), so the project is centered around building images, orchestrating containers and automating tasks via Make.
+Inception is a systems-administration and DevOps project that guides you through building a **mini self-contained infrastructure with Docker**.  
+You learn how to design, build, and orchestrate multiple services (web server, database, WordPress, etc.) using **Docker**, **Docker Compose**, and **shell scripts**, without relying on pre-built “all-in-one” images.
 
-This README is written as a step-by-step guide from start to finish: what the project is, how it's organized, how to set it up locally, how to build and run the environment, how to test and debug it, and how to contribute.
-
-> NOTE: I wrote this README to be generic and actionable for most projects that use shell scripts, Dockerfiles and a Makefile. If you want, I can adapt any part of it to the exact file names and targets in this repository — tell me the names of key files or paste the Makefile and I will update commands to match.
-
-Table of contents
-- Project overview
-- Architecture & components
-- Prerequisites
-- Quick start (recommended)
-- Common commands and Makefile targets
-- Directory layout (recommended / expected)
-- How the pieces work together
-- Testing & verification
-- Troubleshooting
-- Maintenance & deployment notes
-- Contributing
-- License
+This README is a step‑by‑step guide to understand, set up, run, and extend the project.
 
 ---
 
-Project overview
-- Purpose: This repository automates building Docker images and running a small containerized environment using shell scripts and Makefile targets. Use it to build, run, test and tear down the environment in a repeatable way.
-- Scope: Local development and testing. It may also provide artifacts for deployment (images) depending on how Makefile targets are implemented.
+## 1. Project Overview
 
-Architecture & components (high level)
-- Dockerfiles: define the images for each service or component.
-- Shell scripts: helper utilities, image builders, entrypoint scripts and convenience scripts to perform repetitive tasks (e.g., create network, seed data, run migrations).
-- Makefile: a collection of high-level tasks (build, start, stop, clean, logs, test) that call the underlying scripts and Docker commands.
+### 1.1. Goal
 
-Prerequisites
-- Linux/macOS/Windows (with WSL2)
-- Docker Engine (tested with Docker >= 20.10)
-  - sudo or Docker Desktop depending on your platform
-- Make (for running Makefile targets)
-- Optional: docker-compose (if the repository includes docker-compose files)
-- Optional: bash or sh-compatible shell
+- Build a **multi‑container** environment using Docker.
+- Each service runs in its **own container**.
+- No container should use an image like `wordpress`, `mariadb`, etc. directly:  
+  you **build your own images with Dockerfiles**.
+- Store data in **named volumes** so it persists across container restarts.
+- Use **Docker Compose** to orchestrate the setup.
 
-If you don't have Make installed, you can still run the commands directly (see examples in Quick start).
+Typical services you will have (names may vary slightly per subject/version):
 
-Quick start (recommended)
-1. Clone the repository
-   git clone https://github.com/barakamehdi/inception.git
-   cd inception
+- **Nginx** (reverse proxy, HTTPS/TLS termination)
+- **WordPress + PHP-FPM**
+- **MariaDB** (or MySQL-compatible DB)
+- Optional extras depending on your version of the project:
+  - Redis cache
+  - FTP / Adminer / other utilities
 
-2. Inspect the Makefile and scripts
-   make help
-   - If the repository includes a `make help` target, use it to list available commands and their short descriptions.
-   - If there is no `make help`, open the Makefile to learn the available targets.
+> The idea is to simulate a small but realistic production‑like environment.
 
-3. Build images
-   make build
-   - Common pattern: `make build` will build all necessary Docker images by invoking the Dockerfiles or calling build scripts.
-   - If the Makefile doesn't have `build`, run the typical build script:
-     ./scripts/build-all.sh
-     or
-     docker build -t my-image -f path/to/Dockerfile .
+---
 
-4. Start the environment
-   make up
-   - This typically creates networks, starts containers (via docker run or docker-compose up -d), and performs any initial setup.
-   - If the project uses docker-compose:
-     docker-compose up -d
+## 2. Repository Structure
 
-5. Verify containers are running
-   docker ps
-   docker logs <container-name>
+> Exact paths may differ slightly from your repo, but this is the usual structure for Inception.
 
-6. Stop and remove the environment
-   make down
-   - Or:
-     docker-compose down
-     docker stop $(docker ps -q --filter "name=<pattern>") && docker rm $(docker ps -aq --filter "name=<pattern>")
-
-Common commands and Makefile targets (examples)
-- make help — show available targets
-- make build — build all Docker images
-- make image-<service> — build a single service image (if available)
-- make up — start containers (detached)
-- make logs — follow logs for all or a specific container
-- make down — stop and remove containers and network
-- make test — run smoke or integration tests
-- make clean — remove images, volumes and other generated artifacts
-- make shell-<service> — open a shell inside a running container (docker exec -it <container> /bin/bash)
-
-If targets above are not present, you can map them to the repository scripts. Example direct commands:
-- Build image:
-  docker build -t my-service:latest -f docker/service/Dockerfile .
-- Run container:
-  docker run -d --name my-service --network my-net my-service:latest
-
-Directory layout (recommended / expected)
-This is a suggested/typical layout — adapt this section to the actual repo contents if you want me to produce exact paths.
-
-- Dockerfile (or docker/) — one or more Dockerfiles to build images
-- scripts/ — shell scripts used to automate builds, setup, migrations, etc.
-  - scripts/build-all.sh
-  - scripts/start.sh
-  - scripts/seed.sh
-  - scripts/stop.sh
-- Makefile — high-level tasks that orchestrate scripts and Docker commands
-- conf/ or config/ — configuration files and templates (nginx, app confs)
-- data/ or volumes/ — sample data or mounting points for persistent data
-- tests/ — integration and smoke tests
-
-How the pieces work together (walkthrough)
-1. Build phase
-   - Each Dockerfile contains the instructions to install runtime and dependencies for a component.
-   - A build script or `make build` runs docker build for each Dockerfile, tags images and optionally pushes them to a registry.
-
-2. Start phase
-   - The Makefile or start script creates a Docker network (if needed), starts containers with required volume mounts and environment variables, and orchestrates dependencies so services come up in the right order (for example, database before application).
-   - Healthchecks and wait-for scripts are often used to ensure services are ready before dependent services start.
-
-3. Configuration and data seeding
-   - Entry point scripts or `scripts/seed.sh` import initial data or apply migrations.
-   - Environment variables or config templates are used to customize behavior per environment.
-
-4. Running & debugging
-   - Logs: use `docker logs -f <container>` to stream logs.
-   - Shell: `docker exec -it <container> /bin/bash` to inspect container internals.
-   - Rebuild flow: after changing an image source, re-run `make build` and `make up` (or recreate the container).
-
-Testing & verification
-- Unit & integration tests:
-  - If tests exist, `make test` should run them in an isolated environment (often using a dedicated test database).
-  - Alternatively you can run tests inside a test container: docker run --rm my-image:latest /bin/sh -c "cd /app && npm test"
-- Smoke test ideas:
-  - Check container health endpoints (curl http://localhost:80/health)
-  - Verify DB connectivity from the app container
-  - Confirm volumes persist expected files
-
-Troubleshooting
-- Permission errors with Docker: ensure your user is in the docker group or use sudo.
-- Port conflicts: identify and stop conflicting services (ss -ltnp | grep :<port>).
-- Containers exiting immediately: inspect logs and entrypoint scripts. Use `docker inspect <container>` for additional metadata.
-- Broken build: run `docker build` manually to see the full error and fix the Dockerfile or the base image.
-
-Maintenance & deployment notes
-- Keep images minimal and cache-friendly (leverage multi-stage builds).
-- Pin base image versions to reduce surprises during future rebuilds.
-- Use a CI pipeline that runs `make build` and `make test` on push and merges.
-- If deploying to a cluster, consider publishing images to a registry and using a Kubernetes/compose manifest for production.
-
-Contributing
-- Code style:
-  - Shell scripts should set `set -euo pipefail` and use `shellcheck` for linting.
-  - Dockerfiles should minimize layers and use apt/yum cleanup where appropriate.
-- How to propose changes:
-  1. Fork the repository
-  2. Create a feature branch
-  3. Run tests locally (if available)
-  4. Submit a pull request describing the change
-- Include tests and update the README and Makefile as needed.
-
-License
-- Add your project's license here (for example, MIT). If there is no license file yet, consider adding one so others can reuse your code.
-
-Appendix: Example Makefile snippets
-- A simple pattern you can use in the repository:
-
-```Makefile
-.PHONY: help build up down logs clean
-
-help:
-	@echo "Usage:"
-	@echo "  make build    # build images"
-	@echo "  make up       # start containers"
-	@echo "  make down     # stop and remove containers"
-	@echo "  make logs     # show logs"
-	@echo "  make clean    # remove images and volumes"
-
-build:
-	./scripts/build-all.sh
-
-up:
-	./scripts/start.sh
-
-down:
-	./scripts/stop.sh
-
-logs:
-	docker-compose logs -f
-
-clean:
-	./scripts/clean-all.sh
+```text
+.
+├── Makefile
+├── docker-compose.yml
+├── srcs/
+│   ├── requirements/
+│   │   ├── mariadb/
+│   │   │   ├── Dockerfile
+│   │   │   └── tools/        # entrypoint scripts, config scripts
+│   │   ├── nginx/
+│   │   │   ├── Dockerfile
+│   │   │   └── conf/         # nginx.conf, site config
+│   │   └── wordpress/
+│   │       ├── Dockerfile
+│   │       └── tools/        # wp-cli, install script, init script
+│   └── .env                  # environment variables (DB, domain, etc.)
+└── ... (other scripts / configs)
 ```
 
-If you want me to:
-- update this README with exact commands and paths based on the actual Makefile and scripts in this repository, paste the Makefile or tell me the main script names and I will regenerate the README with precise commands; or
-- commit this README.md directly to the repository, tell me and I will create a commit for you.
+- **Shell (58%)** – All the initialization, entrypoint, and helper scripts.
+- **Dockerfile (35.7%)** – Custom images for each service.
+- **Makefile (6.1%)** – High-level commands to build, run, stop, and clean the whole stack.
 
 ---
 
-What I did and what's next
-- I created a comprehensive, step-by-step README tailored to a repository composed of Shell scripts, Dockerfiles and a Makefile. It contains setup, build, run, testing and troubleshooting instructions and includes example Makefile snippets you can copy.
-- Next: if you want this README customized to your repo's real filenames and targets, either (a) give me the Makefile and main scripts or (b) allow me to open the repo and read the files; I'll then update the README to contain exact commands and commit it if you ask.
+## 3. Prerequisites
+
+Before you start:
+
+1. **OS**: Linux or macOS is recommended.  
+2. **Docker** installed and running:
+   - Check: `docker --version`
+3. **Docker Compose** (v2 or integrated with Docker):
+   - Check: `docker compose version`
+4. **Make**:
+   - Check: `make --version`
+5. Basic knowledge of:
+   - Shell scripting
+   - Docker and Dockerfiles
+   - Networking basics (ports, localhost, etc.)
+
+---
+
+## 4. Configuration
+
+### 4.1. Environment File (`.env`)
+
+Most Inception setups use an `.env` file (often in `srcs/.env`) to configure:
+
+- Domain and hostnames
+- Database credentials
+- WordPress admin credentials
+- Volume paths
+
+Typical variables might include:
+
+```dotenv
+# Domain
+DOMAIN_NAME=yourlogin.42.fr
+
+# Database
+MYSQL_ROOT_PASSWORD=some_root_password
+MYSQL_DATABASE=wordpress
+MYSQL_USER=wp_user
+MYSQL_PASSWORD=wp_password
+
+# WordPress admin
+WP_ADMIN_USER=admin
+WP_ADMIN_PASSWORD=admin_password
+WP_ADMIN_EMAIL=admin@example.com
+```
+
+> **Important**:  
+> - Do **not** commit real passwords. For a public repo, use examples or placeholders.  
+> - Ensure `.env` is in `.gitignore` if it contains real secrets.
+
+### 4.2. Volumes and Data Directories
+
+Depending on your `docker-compose.yml`, volumes might be created under something like:
+
+- `/home/<user>/data/wordpress`
+- `/home/<user>/data/mariadb`
+
+or defined as **named volumes**:
+
+```yaml
+volumes:
+  wordpress_data:
+  mariadb_data:
+```
+
+These ensure your **database** and **WordPress files** persist if the containers are recreated.
+
+---
+
+## 5. Understanding Each Service
+
+### 5.1. MariaDB Service
+
+- **Image**: Built from `srcs/requirements/mariadb/Dockerfile`.
+- **Role**: Stores WordPress data (posts, users, options, etc.).
+- **Init script**:
+  - Creates the database defined in `.env`.
+  - Creates the user and sets permissions.
+
+Key ideas:
+
+- The database container usually exposes port `3306` **only inside the Docker network**, not to the host.
+- Initialization is often done by shell scripts executed as `ENTRYPOINT` or `CMD`.
+
+### 5.2. WordPress + PHP-FPM Service
+
+- **Image**: Built from `srcs/requirements/wordpress/Dockerfile`.
+- **Role**: Runs the WordPress application with PHP-FPM.
+
+Typical initialization steps:
+
+1. Download WordPress core (via `wp-cli` or `curl`/`tar`).
+2. Generate the `wp-config.php` file using `.env` DB variables.
+3. Run the initial installation:
+   - Site title
+   - Admin user/password/mail
+4. Start `php-fpm`.
+
+WordPress listens on an internal port (e.g., `9000`) and is reached only by **Nginx** inside the Docker network.
+
+### 5.3. Nginx Service
+
+- **Image**: Built from `srcs/requirements/nginx/Dockerfile`.
+- **Role**:
+  - Acts as a **reverse proxy**.
+  - Terminates **HTTPS** (serves TLS certificates).
+  - Forwards PHP requests to the WordPress/PHP-FPM service.
+
+Key config elements:
+
+- Virtual host configuration (e.g., `/etc/nginx/conf.d/default.conf` or `/etc/nginx/sites-enabled/`).
+- SSL certificates (self-signed or generated in Docker build/runtime).
+- Forwarding to PHP-FPM, for example:
+
+```nginx
+location ~ \.php$ {
+    fastcgi_pass  wordpress:9000;
+    fastcgi_index index.php;
+    include       fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+}
+```
+
+---
+
+## 6. Orchestration with Docker Compose
+
+The `docker-compose.yml` brings everything together:
+
+- Defines services (`nginx`, `wordpress`, `mariadb`, possibly others).
+- Connects them with a **Docker network**.
+- Attaches **volumes**.
+- Maps ports (e.g. host `443` → container `443` for HTTPS).
+
+A simplified conceptual example:
+
+```yaml
+version: "3.8"
+
+services:
+  mariadb:
+    build: ./srcs/requirements/mariadb
+    env_file: ./srcs/.env
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - inception
+
+  wordpress:
+    build: ./srcs/requirements/wordpress
+    depends_on:
+      - mariadb
+    env_file: ./srcs/.env
+    volumes:
+      - wordpress_data:/var/www/html
+    networks:
+      - inception
+
+  nginx:
+    build: ./srcs/requirements/nginx
+    depends_on:
+      - wordpress
+    volumes:
+      - wordpress_data:/var/www/html:ro
+    ports:
+      - "443:443"
+    networks:
+      - inception
+
+volumes:
+  mariadb_data:
+  wordpress_data:
+
+networks:
+  inception:
+```
+
+---
+
+## 7. Makefile: Project Commands
+
+The `Makefile` acts as a **shortcut** for all common Docker Compose operations.
+
+Common targets (names may vary; adapt to your actual file):
+
+```makefile
+up:
+	docker compose -f srcs/docker-compose.yml up -d --build
+
+down:
+	docker compose -f srcs/docker-compose.yml down
+
+clean:
+	docker compose -f srcs/docker-compose.yml down -v
+	docker system prune -f
+
+re:
+	make clean
+	make up
+```
+
+Typical usage:
+
+- `make` or `make up` – Build and start everything.
+- `make down` – Stop containers.
+- `make clean` – Remove containers and volumes (data wiped).
+- `make re` – Clean and rebuild everything.
+
+> Look in your `Makefile` to confirm the exact names and behavior.
+
+---
+
+## 8. Step‑by‑Step: From Zero to Running
+
+### Step 1 – Clone the Repository
+
+```bash
+git clone git@github.com:barakamehdi/inception.git
+cd inception
+```
+
+### Step 2 – Prepare Environment and Folders
+
+1. Create your data folders if the project expects host directories, e.g.:
+
+   ```bash
+   mkdir -p /home/$USER/data/wordpress
+   mkdir -p /home/$USER/data/mariadb
+   ```
+
+2. Create and fill in `srcs/.env`:
+
+   ```bash
+   cp srcs/.env.example srcs/.env   # if an example file exists
+   nano srcs/.env                   # or your editor of choice
+   ```
+
+   Adjust:
+
+   - `DOMAIN_NAME`
+   - Database credentials
+   - WordPress admin data
+
+### Step 3 – Build and Run the Stack
+
+Using the Makefile:
+
+```bash
+make
+# or
+make up
+```
+
+This will:
+
+- Build the custom images from their Dockerfiles.
+- Create and start all containers.
+- Create volumes if not already existing.
+- Run initialization scripts (DB, WordPress, etc.).
+
+You can follow logs with:
+
+```bash
+docker compose -f srcs/docker-compose.yml logs -f
+```
+
+### Step 4 – Access the Site
+
+1. Add an entry in `/etc/hosts` if the domain is not resolvable:
+
+   ```bash
+   sudo nano /etc/hosts
+   # Add:
+   127.0.0.1   yourlogin.42.fr
+   ```
+
+2. Open your browser and go to:
+
+   - `https://yourlogin.42.fr`
+
+3. You should see your **WordPress** site running behind **Nginx** with **HTTPS**.
+
+---
+
+## 9. Managing and Debugging
+
+### 9.1. Check Container Status
+
+```bash
+docker ps
+```
+
+You should see at least:
+
+- `nginx` container
+- `wordpress` container
+- `mariadb` container
+
+### 9.2. Inspect Logs
+
+```bash
+docker compose -f srcs/docker-compose.yml logs nginx
+docker compose -f srcs/docker-compose.yml logs wordpress
+docker compose -f srcs/docker-compose.yml logs mariadb
+```
+
+### 9.3. Enter a Container Shell
+
+```bash
+docker exec -it <container_name> /bin/sh
+# or
+docker exec -it <container_name> /bin/bash
+```
+
+You can check configuration files, processes, permissions, etc.
+
+### 9.4. Reset Everything
+
+If you want a fresh install:
+
+```bash
+make clean
+# Optionally remove host data directories if used:
+rm -rf /home/$USER/data/wordpress/*
+rm -rf /home/$USER/data/mariadb/*
+make
+```
+
+---
+
+## 10. Security and Good Practices
+
+- **Custom images only**:  
+  Don’t use prebuilt `wordpress`, `nginx:latest` without your Dockerfile.  
+  Pin versions where possible (e.g., `alpine:3.18`).
+- **No root where possible**:  
+  Run services as non‑root users inside containers.
+- **Least exposed ports**:  
+  Usually only `443` is published to the host; DB stays internal.
+- **Environment variables**:  
+  Do not commit real passwords or sensitive environment data.
+- **Volumes**:
+  - Use them for persistence.
+  - Do not store secrets in images; prefer secrets or env variables.
+
+---
+
+## 11. Extending the Project
+
+Once the base stack works, you can extend it with:
+
+- **Redis cache** for WordPress.
+- **Adminer / phpMyAdmin** to inspect DB (if allowed by the subject).
+- Better **TLS** setup: automatically renewing certificates with tools like `acme.sh` or Let’s Encrypt (in real-world scenarios).
+- **Monitoring/logging**: Prometheus, Grafana, or basic tools to watch resources.
+
+Each additional service:
+
+1. Gets its own **Dockerfile** (no default images used directly).
+2. Is defined in `docker-compose.yml`.
+3. Is integrated carefully into the existing network and architecture.
+
+---
+
+## 12. Summary
+
+Inception is a journey from:
+
+- Basic Docker commands  
+  → to  
+- Building and orchestrating a small but realistic infrastructure.
+
+This project teaches you to:
+
+- Design separated, composable services.
+- Use Dockerfiles and shell scripts to own your setup.
+- Persist data with volumes.
+- Secure and expose services through a reverse proxy (Nginx + TLS).
+- Automate everything with Docker Compose + Makefile.
+
+---
+
+## 13. Useful Commands Reference
+
+```bash
+# Build and start the stack (check Makefile target name)
+make
+# or
+make up
+
+# Stop containers
+make down
+
+# Destroy containers + volumes (data loss)
+make clean
+
+# See running containers
+docker ps
+
+# See logs
+docker compose -f srcs/docker-compose.yml logs -f
+
+# Enter a container
+docker exec -it <container> /bin/sh
+```
+
+---
+
+If you want, share your current `docker-compose.yml` and `Makefile` and I can tailor this README even more precisely to your exact setup and target names.
